@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rock Cycle Game</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+
+        .container {
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+        }
+
+        .section {
+            background-color: white;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin: 10px;
+            width: calc(33% - 22px);
+            box-sizing: border-box;
+        }
+
+        button {
+            margin: 5px;
+            padding: 5px 10px;
+        }
+
+        #catalog,
+        #overallRocksFound {
+            height: 200px;
+            overflow-y: scroll;
+        }
+
+        input[type="number"] {
+            width: 50px;
+        }
+
+        .new-discovery {
+            color: green;
+            font-weight: bold;
+        }
+
+        #miningProgress,
+        #merchantTimer {
+            width: 100%;
+            background-color: #ddd;
+        }
+
+        #miningBar,
+        #merchantBar {
+            width: 0%;
+            height: 30px;
+            background-color: #4CAF50;
+            text-align: center;
+            line-height: 30px;
+            color: white;
+        }
+
+        #merchant {
+            display: none;
+        }
+
+        .machine-progress {
+            width: 100%;
+            background-color: #ddd;
+            margin-top: 5px;
+        }
+
+        .machine-bar {
+            width: 0%;
+            height: 20px;
+            background-color: #4CAF50;
+            text-align: center;
+            line-height: 20px;
+            color: white;
+            font-size: 12px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="section">
+            <h2>Mining</h2>
+            <button onclick="startMining()" id="mineButton">Start Mining</button>
+            <div id="miningProgress">
+                <div id="miningBar"></div>
+            </div>
+            <p>Rocks: <span id="rockCount">0</span></p>
+            <p>Pickaxe Level: <span id="pickaxeLevel">1</span></p>
+            <button onclick="upgradePick()">Upgrade Pickaxe ($<span id="upgradePickCost">10</span>)</button>
+        </div>
+        <div class="section">
+            <h2>Machines</h2>
+            <!-- For the Pressure and Heating Chamber -->
+            <div id="pressureHeatingMessage"></div>
+
+            <!-- For the Cooling Rack -->
+            <div id="coolingRackMessage"></div>
+
+            <!-- For the Merchant -->
+            <div id="merchantMessage"></div>
+            <div>
+                <label>Pressure and Heating Chamber:</label>
+                <input type="number" id="pressureHeatingInput" min="0" value="0">
+                <button onclick="startPressureHeatingChamber()" id="pressureHeatingButton">Process</button>
+                <div class="machine-progress">
+                    <div id="pressureHeatingBar" class="machine-bar"></div>
+                </div>
+            </div>
+            <div>
+                <label>Rock Tumbler:</label>
+                <input type="number" id="rockTumblerInput" min="0" value="0">
+                <button onclick="startRockTumbler()" id="rockTumblerButton">Process</button>
+                <div class="machine-progress">
+                    <div id="rockTumblerBar" class="machine-bar"></div>
+                </div>
+            </div>
+            <div>
+                <label>Cooling Rack:</label>
+                <input type="number" id="coolingRackInput" min="0" value="0">
+                <button onclick="startCoolingRack()" id="coolingRackButton">Process</button>
+                <div class="machine-progress">
+                    <div id="coolingRackBar" class="machine-bar"></div>
+                </div>
+            </div>
+        </div>
+        <div class="section">
+            <h2>Catalog</h2>
+            <div id="catalog"></div>
+        </div>
+    </div>
+    <div class="container">
+        <div class="section">
+            <h2>Inventory</h2>
+            <p>Sedimentary Rock: <span id="sedimentaryCount">0</span></p>
+            <p>Igneous Rock: <span id="igneousCount">0</span></p>
+            <p>Metamorphic Rock: <span id="metamorphicCount">0</span></p>
+            <p>Lava: <span id="lavaCount">0</span></p>
+            <p>Sediments: <span id="sedimentsCount">0</span></p>
+        </div>
+        <div class="section">
+            <h2>Merchant</h2>
+            <button onclick="sellRocks()">Sell Rocks</button>
+            <p>Money: $<span id="money">0</span></p>
+        </div>
+        <div class="section">
+            <h2>Overall Rocks Found</h2>
+            <div id="overallRocksFound"></div>
+        </div>
+    </div>
+
+    <script>
+        const BASE_MINING_SPEED = 50; // Base mining speed
+        const BASE_MACHINE_SPEED = 50; // Base machine processing speed
+        const pressureHeatingMessage = document.getElementById("pressureHeatingMessage");
+        const coolingRackMessage = document.getElementById("coolingRackMessage");
+        const merchantMessage = document.getElementById("merchantMessage");
+
+        let rocks = 0;
+        let sedimentary = 0;
+        let igneous = 0;
+        let metamorphic = 0;
+        let lava = 0;
+        let sediments = 0;
+        let pickaxeLevel = 1;
+        let money = 0;
+        let isMining = false;
+        let merchantInterval;
+        let merchantTimeLeft = 0;
+        let playerResources = {
+            sedimentary: 0,      // The amount of sedimentary resource the player has
+            processedItem: 0,    // The amount of processed items (e.g., after using the Pressure and Heating Chamber)
+            currency: 0          // The amount of currency the player has
+        };
+
+        // Define playerTools object with initial tool levels
+        let playerTools = {
+            pickaxeLevel: 0      // The level of the pickaxe (0 means unupgraded)
+        };
+        // Initialize playerResources with some starting values
+        playerResources.sedimentary = 5;  // Example: the player starts with 5 sedimentary resources
+        playerResources.processedItem = 0;  // No processed items initially
+        playerResources.currency = 20;  // The player has 20 currency
+
+        // Initialize playerTools with starting values
+        playerTools.pickaxeLevel = 1;  // Example: the player starts with pickaxe level 1
+
+        const overallRocksFound = {
+            "Granite": 0,
+            "Basalt": 0,
+            "Sandstone": 0,
+            "Limestone": 0,
+            "Marble": 0,
+            "Slate": 0,
+
+            // Additional rocks
+            "Obsidian": 0,
+            "Pumice": 0,
+            "Gneiss": 0,
+            "Schist": 0,
+            "Quartzite": 0,
+            "Shale": 0,
+            "Conglomerate": 0,
+            "Breccia": 0,
+            "Diorite": 0,
+            "Gabbro": 0,
+            "Andesite": 0,
+            "Rhyolite": 0,
+            "Phyllite": 0,
+            "Serpentinite": 0,
+            "Travertine": 0,
+            "Chert": 0,
+            "Pegmatite": 0,
+            "Eclogite": 0,
+            "Kimberlite": 0,
+            "Blueschist": 0,
+            "Migmatite": 0,
+            "Hornfels": 0,
+            "Greywacke": 0,
+            "Mylonite": 0,
+            "Syenite": 0,
+            "Tonalite": 0,
+            "Granulite": 0,
+            "Amphibolite": 0,
+            "Skarn": 0,
+            // Continue adding rocks...
+            // New rare rocks
+            "Carbonatite": 0,
+            "Nepheline syenite": 0,
+            "Jaspillite": 0,
+            "Dunite": 0,
+            // Extraterrestrial rocks
+            "Komatiite": 0,
+            "Trondhjemite": 0,
+            // Impact-related rocks
+            "Anorthosite": 0,
+            // Rare minerals
+            "Painite": 0,
+            // Tektites and meteorites
+            "Blue lace agate": 0,
+            // Final rarest minerals
+            "Musgravite": 0,
+            "Red beryl": 0
+        };
+        const catalog = {
+            // Original rocks
+            "Granite": { description: "Igneous rock formed from cooled magma", rarity: 1 },
+            "Basalt": { description: "Igneous rock formed from rapid cooling of lava", rarity: 1 },
+            "Sandstone": { description: "Sedimentary rock formed from sand particles", rarity: 1 },
+            "Limestone": { description: "Sedimentary rock formed from marine organisms", rarity: 1 },
+            "Marble": { description: "Metamorphic rock formed from limestone", rarity: 1 },
+            "Slate": { description: "Metamorphic rock formed from shale", rarity: 1 },
+
+            // Additional 50 rocks with varying rarities
+            "Obsidian": { description: "Volcanic glass formed by rapid cooling of lava", rarity: 2 },
+            "Pumice": { description: "Light, porous volcanic rock", rarity: 2 },
+            "Gneiss": { description: "Metamorphic rock with distinct banding", rarity: 2 },
+            "Schist": { description: "Metamorphic rock with sheet-like grains", rarity: 2 },
+            "Quartzite": { description: "Metamorphic rock formed from sandstone", rarity: 2 },
+            "Shale": { description: "Fine-grained sedimentary rock", rarity: 2 },
+            "Conglomerate": { description: "Sedimentary rock with rounded pebbles", rarity: 2 },
+            "Breccia": { description: "Sedimentary rock with angular fragments", rarity: 2 },
+            "Diorite": { description: "Intrusive igneous rock", rarity: 3 },
+            "Gabbro": { description: "Coarse-grained igneous rock", rarity: 3 },
+            "Andesite": { description: "Volcanic rock with intermediate composition", rarity: 3 },
+            "Rhyolite": { description: "Volcanic rock with high silica content", rarity: 3 },
+            "Phyllite": { description: "Metamorphic rock between slate and schist", rarity: 3 },
+            "Serpentinite": { description: "Metamorphic rock rich in serpentine minerals", rarity: 3 },
+            "Travertine": { description: "Sedimentary rock formed by mineral springs", rarity: 3 },
+            "Chert": { description: "Sedimentary rock composed of microcrystalline quartz", rarity: 3 },
+            "Pegmatite": { description: "Extremely coarse-grained igneous rock", rarity: 4 },
+            "Eclogite": { description: "High-pressure metamorphic rock", rarity: 4 },
+            "Kimberlite": { description: "Igneous rock that sometimes contains diamonds", rarity: 4 },
+            "Blueschist": { description: "Metamorphic rock formed under high pressure", rarity: 4 },
+            "Migmatite": { description: "Mixed metamorphic and igneous rock", rarity: 4 },
+            "Hornfels": { description: "Contact metamorphic rock", rarity: 4 },
+            "Greywacke": { description: "Type of sandstone with poorly sorted angular grains", rarity: 4 },
+            "Mylonite": { description: "Metamorphic rock formed by dynamic recrystallization", rarity: 4 },
+            "Syenite": { description: "Igneous rock similar to granite but with less quartz", rarity: 5 },
+            "Tonalite": { description: "Igneous rock intermediate between diorite and granite", rarity: 5 },
+            "Granulite": { description: "High-grade metamorphic rock", rarity: 5 },
+            "Amphibolite": { description: "Metamorphic rock composed mainly of amphibole", rarity: 5 },
+            "Skarn": { description: "Metamorphic rock formed by contact metamorphism", rarity: 5 },
+            "Novaculite": { description: "Sedimentary rock composed of microcrystalline quartz", rarity: 5 },
+            "Carbonatite": { description: "Rare igneous rock composed of carbonate minerals", rarity: 6 },
+            "Nepheline syenite": { description: "Igneous rock rich in nepheline", rarity: 6 },
+            "Jaspillite": { description: "Banded iron formation", rarity: 6 },
+            "Dunite": { description: "Igneous rock composed almost entirely of olivine", rarity: 6 },
+            "Eclogite": { description: "High-pressure metamorphic rock", rarity: 6 },
+            "Rodingite": { description: "Metasomatic rock associated with serpentinization", rarity: 6 },
+            "Komatiite": { description: "Ultramafic volcanic rock", rarity: 7 },
+            "Trondhjemite": { description: "Leucocratic variety of tonalite", rarity: 7 },
+            "Anorthosite": { description: "Intrusive igneous rock composed almost entirely of plagioclase", rarity: 7 },
+            "Pseudotachylite": { description: "Fault rock formed by frictional melting", rarity: 7 },
+            "Eucrite": { description: "Extraterrestrial igneous rock", rarity: 8 },
+            "Shergottite": { description: "Martian meteorite", rarity: 8 },
+            "Moldavite": { description: "Tektite formed by meteorite impact", rarity: 8 },
+            "Suevite": { description: "Impact breccia", rarity: 8 },
+            "Tagamite": { description: "Impact melt rock", rarity: 9 },
+            "Libyan desert glass": { description: "Natural glass formed by meteorite impact", rarity: 9 },
+            "Painite": { description: "One of the rarest minerals on Earth", rarity: 10 },
+            "Blue lace agate": { description: "Rare variety of banded chalcedony", rarity: 10 },
+            "Musgravite": { description: "Extremely rare oxide mineral", rarity: 10 },
+            "Red beryl": { description: "Extremely rare variety of beryl", rarity: 10 }
+        };
+        function updateDisplay() {
+            document.getElementById('rockCount').textContent = rocks;
+            document.getElementById('sedimentaryCount').innerHTML = sedimentary;
+            document.getElementById('igneousCount').textContent = igneous;
+            document.getElementById('metamorphicCount').innerHTML = metamorphic;
+            document.getElementById('lavaCount').textContent = lava;
+            document.getElementById('sedimentsCount').textContent = sediments;
+            document.getElementById('pickaxeLevel').textContent = pickaxeLevel;
+            document.getElementById('money').textContent = money;
+            document.getElementById('upgradePickCost').textContent = pickaxeLevel * 10;
+            updateOverallRocksFound();
+        }
+        function calculateProcessingSpeed(baseSpeed, pickaxeLevel) {
+            // Adjust processing speed based on pickaxe level
+            return baseSpeed - Math.floor(pickaxeLevel / 2);
+        }
+        function startMining() {
+            if (!isMining) {
+                isMining = true;
+                document.getElementById('mineButton').disabled = true;
+                let progress = 0;
+
+                // Calculate processing speed based on pickaxe level
+                const miningSpeed = calculateProcessingSpeed(BASE_MINING_SPEED, pickaxeLevel);
+
+                const miningInterval = setInterval(() => {
+                    // Increase progress faster with higher pickaxe levels
+                    progress += 1 + Math.floor(pickaxeLevel / 2);
+
+                    document.getElementById('miningBar').style.width = progress + '%';
+                    document.getElementById('miningBar').innerHTML = progress + '%';
+
+                    if (progress >= 100) {
+                        clearInterval(miningInterval);
+                        mineRock();
+                        isMining = false;
+                        document.getElementById('mineButton').disabled = false;
+                        document.getElementById('miningBar').style.width = '0%';
+                        document.getElementById('miningBar').innerHTML = '';
+                    }
+                }, miningSpeed);
+            }
+        }
+
+
+        function mineRock() {
+            rocks += pickaxeLevel;
+            let newDiscoveries = [];
+            for (let rock in catalog) {
+                if (catalog[rock].rarity <= pickaxeLevel && Math.random() < 0.1 / catalog[rock].rarity) {
+                    overallRocksFound[rock]++;
+                    if (overallRocksFound[rock] === 1) {
+                        newDiscoveries.push(rock);
+                    }
+                }
+            }
+            updateDisplay();
+            updateCatalog(newDiscoveries);
+        }
+        function startMerchantTimer() {
+            merchantTimeLeft = 60; // Merchant stays for 60 seconds
+            document.getElementById('merchant').style.display = 'block';
+            const timerInterval = setInterval(() => {
+                merchantTimeLeft--;
+                const percentage = (merchantTimeLeft / 60) * 100;
+                document.getElementById('merchantBar').style.width = percentage + '%';
+                document.getElementById('merchantBar').innerHTML = merchantTimeLeft + 's';
+                if (merchantTimeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    document.getElementById('merchant').style.display = 'none';
+                }
+            }, 1000);
+        }
+        function checkMerchantRequirements() {
+            // Check if the user has enough currency or completed any necessary quest or conditions
+            const hasCurrency = playerResources.currency >= 10;  // Example condition: needs 10 currency
+
+            if (!hasCurrency) {
+                merchantMessage.innerHTML = "You need 10 ore to interact with the Merchant!";
+            } else {
+                merchantMessage.innerHTML = "You can now interact with the Merchant!";
+            }
+        }
+        function sellToMerchant() {
+            const bonus = 1.5; // 50% bonus
+            const totalValue = (rocks + sedimentary * 2 + igneous * 2 + metamorphic * 3 + lava * 4 + sediments) * bonus;
+            money += totalValue;
+            rocks = sedimentary = igneous = metamorphic = lava = sediments = 0;
+            updateDisplay();
+            alert(`You sold your rocks to the merchant for $${totalValue.toFixed(2)}!`);
+        }
+        function upgradePick() {
+            const upgradeCost = pickaxeLevel * 10;
+            if (money >= upgradeCost) {
+                money -= upgradeCost;
+                pickaxeLevel++;
+
+                // Optional: Add a bonus or special effect for upgrading
+                const speedBonus = Math.floor(pickaxeLevel / 2);
+                alert(`Pickaxe upgraded! 
+        Current Level: ${pickaxeLevel}
+        Speed Bonus: ${speedBonus}%`);
+
+                updateDisplay();
+            }
+        }
+        function checkPressureHeatingRequirements() {
+            // Debugging: log current resources
+            console.log("Player Resources: ", playerResources);
+            const hasSedimentary = playerResources.sedimentary > 0;
+            const hasPickaxe = playerTools.pickaxeLevel >= 1;
+
+            if (!hasSedimentary) {
+                console.log("Not enough Sedimentary!");
+                pressureHeatingMessage.innerHTML = "You need Sedimentary to use the Pressure and Heating Chamber!";
+            } else if (!hasPickaxe) {
+                console.log("Pickaxe level too low!");
+                pressureHeatingMessage.innerHTML = "You need a Pickaxe to use the Pressure and Heating Chamber!";
+            } else {
+                console.log("All requirements met for Pressure and Heating Chamber.");
+                pressureHeatingMessage.innerHTML = "Ready to use the Pressure and Heating Chamber!";
+            }
+        }
+
+        // Call this function when the user tries to interact with the chamber
+        checkPressureHeatingRequirements();
+        // Function to start the Pressure and Heating Chamber
+        function startPressureHeatingChamber() {
+            const amount = parseInt(document.getElementById('pressureHeatingInput').value);
+            if (amount > 0 && sedimentary >= amount) {  // Make sure you have enough sedimentary rocks
+                document.getElementById('pressureHeatingButton').disabled = true;  // Disable the button
+                let progress = 0;
+
+                const processingSpeed = calculateProcessingSpeed(BASE_MACHINE_SPEED, pickaxeLevel);
+
+                const interval = setInterval(() => {
+                    progress += 1 + Math.floor(pickaxeLevel / 3); // Pickaxe level speeds up the process
+                    document.getElementById('pressureHeatingBar').style.width = progress + '%';
+                    document.getElementById('pressureHeatingBar').innerHTML = progress + '%';
+
+                    if (progress >= 100) {  // Process complete
+                        clearInterval(interval);
+                        usePressureHeatingChamber(amount);  // Process the materials
+                        sedimentary -= amount;  // Reduce available sedimentary rocks
+                        document.getElementById('pressureHeatingButton').disabled = false;  // Re-enable the button
+                        document.getElementById('pressureHeatingBar').style.width = '0%';  // Reset the progress bar
+                        document.getElementById('pressureHeatingBar').innerHTML = '';  // Clear the progress text
+                    }
+                }, processingSpeed);  // Adjust speed based on pickaxe level
+            }
+        }
+
+        // Function to process the Pressure Heating Chamber
+        function usePressureHeatingChamber(amount) {
+            for (let i = 0; i < amount; i++) {
+                if (Math.random() < 0.7) {
+                    metamorphic++;  // Produce metamorphic rock
+                    sedimentary--;   // Decrease sedimentary rock
+                } else {
+                    lava++;          // Produce lava
+                    sedimentary--;   // Decrease sedimentary rock
+                }
+            }
+            updateDisplay();
+        }
+
+        function startRockTumbler() {
+            const amount = parseInt(document.getElementById('rockTumblerInput').value);
+            if (amount > 0 && rocks >= amount) {
+                document.getElementById('rockTumblerButton').disabled = true;
+                let progress = 0;
+
+                const processingSpeed = calculateProcessingSpeed(BASE_MACHINE_SPEED, pickaxeLevel);
+
+                const interval = setInterval(() => {
+                    progress += 1 + Math.floor(pickaxeLevel / 3);  // Pickaxe level speeds up the process
+                    document.getElementById('rockTumblerBar').style.width = progress + '%';
+                    document.getElementById('rockTumblerBar').innerHTML = progress + '%';
+
+                    if (progress >= 100) {
+                        clearInterval(interval);
+                        useRockTumbler(amount);  // Process the rocks
+                        rocks -= amount;  // Decrease rocks
+                        document.getElementById('rockTumblerButton').disabled = false;
+                        document.getElementById('rockTumblerBar').style.width = '0%';  // Reset the progress bar
+                        document.getElementById('rockTumblerBar').innerHTML = '';  // Clear progress text
+                    }
+                }, processingSpeed);
+            }
+        }
+
+        // Function to process the Rock Tumbler
+        function useRockTumbler(amount) {
+            for (let i = 0; i < amount; i++) {
+                if (Math.random() < 0.6) {
+                    sedimentary++;  // Produce sedimentary rock
+                    rocks--;         // Decrease rocks
+                } else {
+                    igneous++;       // Produce igneous rock
+                    rocks--;         // Decrease rocks
+                }
+            }
+            updateDisplay();
+        }
+
+        function checkCoolingRackRequirements() {
+            // Check if the user has enough resources (e.g., finished process in the Pressure and Heating Chamber)
+            const hasProcessedItem = playerResources.processedItem > 0;  // Example condition
+
+            if (!hasProcessedItem) {
+                coolingRackMessage.innerHTML = "You need to process an item in the Pressure and Heating Chamber first!";
+            } else {
+                coolingRackMessage.innerHTML = "Ready to use the Cooling Rack!";
+            }
+        }
+
+        // Call this function when the user tries to interact with the Cooling Rack
+        checkCoolingRackRequirements();
+        function startCoolingRack() {
+            const amount = parseInt(document.getElementById('coolingRackInput').value);
+            if (amount > 0 && lava >= amount) {  // Make sure you have enough lava
+                document.getElementById('coolingRackButton').disabled = true;  // Disable the button
+                let progress = 0;
+
+                const processingSpeed = calculateProcessingSpeed(BASE_MACHINE_SPEED, pickaxeLevel);
+
+                const interval = setInterval(() => {
+                    progress += 1 + Math.floor(pickaxeLevel / 3); // Pickaxe level speeds up the process
+                    document.getElementById('coolingRackBar').style.width = progress + '%';
+                    document.getElementById('coolingRackBar').innerHTML = progress + '%';
+
+                    if (progress >= 100) {  // Process complete
+                        clearInterval(interval);
+                        useCoolingRack(amount);  // Process the lava
+                        lava -= amount;  // Reduce available lava
+                        document.getElementById('coolingRackButton').disabled = false;  // Re-enable the button
+                        document.getElementById('coolingRackBar').style.width = '0%';  // Reset the progress bar
+                        document.getElementById('coolingRackBar').innerHTML = '';  // Clear the progress text
+                    }
+                }, processingSpeed);  // Adjust speed based on pickaxe level
+            }
+        }
+
+        // Function to process the Cooling Rack
+        function useCoolingRack(amount) {
+            for (let i = 0; i < amount; i++) {
+                if (Math.random() < 0.5) {
+                    igneous++;  // Produce igneous rock
+                    lava--;      // Decrease lava
+                } else {
+                    sedimentary++;  // Produce sedimentary rock
+                    lava--;          // Decrease lava
+                }
+            }
+            updateDisplay();
+        }
+
+
+
+        function sellRocks() {
+            money += rocks + sedimentary * 2 + igneous * 2 + metamorphic * 3 + lava * 4 + sediments;
+            rocks = sedimentary = igneous = metamorphic = lava = sediments = 0;
+            updateDisplay();
+        }
+
+        function updateCatalog(newDiscoveries) {
+            let catalogHtml = "";
+            for (let rock in catalog) {
+                if (overallRocksFound[rock] > 0) {
+                    let newClass = newDiscoveries.includes(rock) ? 'class="new-discovery"' : '';
+                    catalogHtml += `<p ${newClass}><strong>${rock} (Rarity: ${catalog[rock].rarity}):</strong> ${catalog[rock].description}</p>`;
+                }
+            }
+            document.getElementById('catalog').innerHTML = catalogHtml;
+        }
+
+        function updateOverallRocksFound() {
+            let overallHtml = "";
+            for (let rock in overallRocksFound) {
+                if (overallRocksFound[rock] > 0) {
+                    overallHtml += `<p>${rock}: ${overallRocksFound[rock]}</p>`;
+                }
+            }
+            document.getElementById('overallRocksFound').innerHTML = overallHtml;
+        }
+
+        updateDisplay();
+    </script>
+</body>
+
+</html>
